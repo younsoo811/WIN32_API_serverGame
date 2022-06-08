@@ -28,8 +28,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 		WS_OVERLAPPEDWINDOW,
 		CW_USEDEFAULT,
 		CW_USEDEFAULT,
-		1000,
-		1000,
+		700,
+		700,
 		NULL,
 		NULL,
 		hInstance,
@@ -58,6 +58,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT iMsg,
 	WPARAM wParam, LPARAM lParam)
 {
 	HDC hdc;
+	HPEN hPen;
 	PAINTSTRUCT ps;
 	static WSADATA wsadata;
 	static SOCKET s, cs;
@@ -65,9 +66,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT iMsg,
 	static char buffer[100];
 	static SOCKADDR_IN addr = { 0 }, c_addr;
 	static TCHAR str[100];
-	static int count;
+	static TCHAR str2[100];
 	int size, msgLen;
-
 	TCHAR seps[] = _T(",");
 	TCHAR* token;
 	TCHAR* nexttoken;
@@ -79,9 +79,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT iMsg,
 	static BOOL isC;
 	static BOOL isP;
 	static int	iColor;
-	TCHAR x[1], y[1];
-	HPEN hPen;
-	static TCHAR str2[100];
 	static int sendx[5][5] = { 0 };
 	static int sendy[5][5] = { 0 };
 	static int sx, sy;
@@ -129,24 +126,17 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT iMsg,
 		if (isP){
 			if (_tcscmp(msg, _T(""))){
 				token = _tcstok_s(msg, seps, &nexttoken);
-				TextOut(hdc, 0, 0, token, (int)_tcslen(token));
-				//_tprintf(_T("%s\n"), token);
 				_tcscpy_s(Btk, _countof(Btk), token);
 				sx = _wtoi(Btk);
-
 				while (token != NULL){
 					//다음 문자열 구하기
-					//_tprintf(_T("%i\n"), sx);
-					TextOut(hdc, 0, 30, token, (int)_tcslen(token));
 					_tcscpy_s(Btk, _countof(Btk), token);
 					sy = _wtoi(Btk);
 					token = _tcstok_s(NULL, seps, &nexttoken);
 				}
 				sendx[(sx - (BSIZE / 2)) / BSIZE][(sy - (BSIZE / 2)) / BSIZE] = sx;
 				sendy[(sx - (BSIZE / 2)) / BSIZE][(sy - (BSIZE / 2)) / BSIZE] = sy;
-				//Ellipse(hdc, sendx[sx / BSIZE][sy / BSIZE] - 50, sendy[sx / BSIZE][sy / BSIZE] - 50, sendx[sx / BSIZE][sy / BSIZE] + 50, sendy[sx / BSIZE][sy / BSIZE] + 50);
 			}
-			isP = false;
 		}
 
 
@@ -161,9 +151,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT iMsg,
 			LineTo(hdc, BSIZE * 5, BSIZE*(i + 1));
 		}
 
+		//서버에서 그렸던 원 그리기 (서버 : 붉은 원)
 		hPen = CreatePen(PS_SOLID, 1, RGB(0, 0, 255));
 		(HPEN)SelectObject(hdc, hPen);
-		//저장된 원 그리기
 		for (int i = 0; i < 5; i++){
 			for (int j = 0; j < 5; j++){
 				if (sendx[i][j] != 0 && sendy[i][j] != 0){
@@ -172,7 +162,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT iMsg,
 			}
 		}
 
-		//저장된 원 그리기
+		//클라이언트에서 그렸던 원 그리기 (클라이언트 : 푸른 원)
 		hPen = CreatePen(PS_SOLID, 1, RGB(255, 0, 0));
 		(HPEN)SelectObject(hdc, hPen);
 		for (int i = 0; i < 5; i++){
@@ -183,56 +173,48 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT iMsg,
 				}
 			}
 		}
-
-		//원그리기
-		if (isC){
-			hPen = CreatePen(PS_SOLID, 1, RGB(255, 0, 0));
-			(HPEN)SelectObject(hdc, hPen);
-			Ellipse(hdc, cx - 50, cy - 50, cx + 50, cy + 50);
-			isC = false;
-		}
-
 		EndPaint(hwnd, &ps);
 		break;
 	case WM_LBUTTONDOWN:
+		if (isP){	//클라이언트로부터 전송 받은 다음에 그릴 수 있음
+			dx = LOWORD(lParam);	//마우스 좌표
+			dy = HIWORD(lParam);
 
-		dx = LOWORD(lParam);	//마우스 좌표
-		dy = HIWORD(lParam);
-
-		if (InRectangle(dx, dy)) {	//큰 사각형 내부에 클릭 했는지 확인
-			isC = TRUE;
-		}
-
-		if (isC){
-			cx = (dx / BSIZE)*BSIZE + BSIZE / 2;		//원의 중심 좌표 구하기
-			cy = (dy / BSIZE)*BSIZE + BSIZE / 2;
-
-			savex[dx / BSIZE][dy / BSIZE] = cx;
-			savey[dx / BSIZE][dy / BSIZE] = cy;
-
-			InvalidateRgn(hwnd, NULL, TRUE);
-		}
-
-		wsprintf(str, TEXT("%d"), savex[dx / BSIZE][dy / BSIZE]);
-		wsprintf(str2, TEXT("%d"), savey[dx / BSIZE][dy / BSIZE]);
-		_tcscat_s(str, _T(","));
-		_tcscat_s(str, str2);
-
-		if (isC)
-			if (cs == INVALID_SOCKET)
-				return 0;
-			else
-			{
-#ifdef _UNICODE
-				msgLen = WideCharToMultiByte(CP_ACP, 0, str, -1, NULL, 0, NULL, NULL);
-				WideCharToMultiByte(CP_ACP, 0, str, -1, buffer, msgLen, NULL, NULL);
-#else
-				strcpy_s(buffer, str);
-#endif
-				send(cs, (LPSTR)buffer, strlen(buffer) + 1, 0);
-				count = 0;
-				return 0;
+			if (InRectangle(dx, dy)) {	//큰 사각형 내부에 클릭 했는지 확인
+				isC = true;
 			}
+			else isC = false;
+
+			if (isC){
+				cx = (dx / BSIZE)*BSIZE + BSIZE / 2;	//원의 중심 좌표 구하기
+				cy = (dy / BSIZE)*BSIZE + BSIZE / 2;
+
+				savex[dx / BSIZE][dy / BSIZE] = cx;
+				savey[dx / BSIZE][dy / BSIZE] = cy;
+
+				isP = false;	//클라이언트가 전송 보낼때 다시 true로 바뀜
+				InvalidateRgn(hwnd, NULL, TRUE);
+
+				wsprintf(str, TEXT("%d"), savex[dx / BSIZE][dy / BSIZE]);
+				wsprintf(str2, TEXT("%d"), savey[dx / BSIZE][dy / BSIZE]);
+				_tcscat_s(str, _T(","));
+				_tcscat_s(str, str2);
+
+				if (cs == INVALID_SOCKET)
+					return 0;
+				else
+				{
+#ifdef _UNICODE
+					msgLen = WideCharToMultiByte(CP_ACP, 0, str, -1, NULL, 0, NULL, NULL);
+					WideCharToMultiByte(CP_ACP, 0, str, -1, buffer, msgLen, NULL, NULL);
+#else
+					strcpy_s(buffer, str);
+#endif
+					send(cs, (LPSTR)buffer, strlen(buffer) + 1, 0);
+					return 0;
+				}
+			}
+		}
 		return 0;
 	case WM_DESTROY:
 		closesocket(s);
